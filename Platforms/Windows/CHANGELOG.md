@@ -5,7 +5,7 @@
 
 - Bare `CaptureActive` can sustain or resume an already-open episode but no longer seeds one: GameViewerServer opens DxgKrnl capture contexts for its own health checks, so seeding on it self-feeds a phantom Connected.
 - `LogFallback` now reads the **connection log**, not the streamer log: the streamer log gets ~300 B heartbeats plus device-change bursts from Snug's own display churn (self-feeding); the connection log only grows while a real remote client session is live.
-- Hold the log signal through the connection log's burst cadence (freshness 15 s; measured bursts up to ~10-15 s apart) and require absence beyond the burst gap before an `Ended`, so a live relayed session isn't torn down between flushes.
+- Hold the log signal through the connection log's burst cadence (freshness 15 s measured against the last qualifying burst — previously a gap > 3 s collapsed the event window and reported inactive mid-session).
 - Root cause of the self-oscillation loop measured on a machine with no remote client: display churn regrew the streamer log → `LogFallback` seeded phantom `Connected` → virtual phone display built → quiet → `Ended` → teardown logging regrew the log → repeat.
 - Verified live: a real phone session seeds `Connected` → display built → held >90 s; idle machine stays quiet. 304/304 tests pass.
 

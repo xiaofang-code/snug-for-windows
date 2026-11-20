@@ -77,12 +77,14 @@ public sealed class UuSessionDetector : IDisposable
                 if (pids.Count == 0)
                 {
                     _streamLogActivity.Reset();
+                    _connectionLogActivity.Reset();
                     signals = new UuSignals(false, null, false);
                     summary = "GameViewerServer 未运行";
                 }
                 else if (serverProcesses.Length != 1 || serverPid is null)
                 {
                     _streamLogActivity.Reset();
+                    _connectionLogActivity.Reset();
                     signals = new UuSignals(false, null, null);
                     summary = "GameViewerServer 多进程 · 推流状态未知";
                 }
@@ -161,6 +163,7 @@ public sealed class UuSessionDetector : IDisposable
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             _streamLogActivity.Reset();
+            _connectionLogActivity.Reset();
             signals = new UuSignals(false, null, null);
             summary = "UU 会话日志暂不可读：" + error.GetType().Name;
             serverPid = null;
