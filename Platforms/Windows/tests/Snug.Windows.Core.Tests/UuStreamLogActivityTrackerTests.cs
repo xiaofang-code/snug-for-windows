@@ -48,7 +48,7 @@ public sealed class UuStreamLogActivityTrackerTests
         tracker.Observe("streamer.slog", 1200, T.AddSeconds(1));
         Assert.True(tracker.Observe("streamer.slog", 2300, T.AddSeconds(2)));
         Assert.True(tracker.Observe("streamer.slog", 2300, T.AddSeconds(3.5)));
-        Assert.False(tracker.Observe("streamer.slog", 2300, T.AddSeconds(17.1)));
+        Assert.False(tracker.Observe("streamer.slog", 2300, T.AddSeconds(18.6)));
     }
 
     [Fact]

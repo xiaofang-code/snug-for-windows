@@ -23,6 +23,7 @@ public sealed class UuStreamLogActivityTracker
     private DateTimeOffset? _lastSampleAt;
     private readonly Queue<(DateTimeOffset At, long Bytes)> _growthEvents = new();
     private long _windowGrowthBytes;
+    private DateTimeOffset? _lastQualifiedAt;
 
     public bool Observe(string source, long length, DateTimeOffset now)
     {
@@ -62,6 +63,7 @@ public sealed class UuStreamLogActivityTracker
             _lastLength = length;
             _growthEvents.Clear();
             _windowGrowthBytes = 0;
+            _lastQualifiedAt = null;
             return false;
         }
 
@@ -70,20 +72,18 @@ public sealed class UuStreamLogActivityTracker
             _lastLength = length;
             _growthEvents.Enqueue((now, length - previousLength));
             _windowGrowthBytes += length - previousLength;
-            while (_growthEvents.TryPeek(out var oldest) && now - oldest.At > GrowthWindow)
-            {
-                _windowGrowthBytes -= oldest.Bytes;
-                _growthEvents.Dequeue();
-            }
+        }
+        while (_growthEvents.TryPeek(out var oldest) && now - oldest.At > GrowthWindow)
+        {
+            _windowGrowthBytes -= oldest.Bytes;
+            _growthEvents.Dequeue();
         }
 
-        if (_growthEvents.Count < 2 || _windowGrowthBytes < MinimumGrowthBytes)
-            return false;
+        if (_growthEvents.Count >= 2 && _windowGrowthBytes >= MinimumGrowthBytes)
+            _lastQualifiedAt = now;
 
-        var last = _growthEvents.Last().At;
-
-        var age = now - last;
-        return age >= TimeSpan.Zero && age <= Freshness;
+        var age = _lastQualifiedAt is { } qualified ? now - qualified : (TimeSpan?)null;
+        return age is { } a && a >= TimeSpan.Zero && a <= Freshness;
     }
 
     public void Reset()
@@ -93,5 +93,6 @@ public sealed class UuStreamLogActivityTracker
         _lastSampleAt = null;
         _growthEvents.Clear();
         _windowGrowthBytes = 0;
+        _lastQualifiedAt = null;
     }
 }

@@ -53,16 +53,12 @@ public sealed class UuConnectionTracker
     public static readonly TimeSpan UnknownControllerGrace = TimeSpan.FromSeconds(2);
     public static readonly TimeSpan VerifiedActiveGrace = TimeSpan.FromSeconds(1);
     public static readonly TimeSpan MinimumInterruptedGrace = TimeSpan.FromMilliseconds(500);
-    // The connection log flushes in bursts up to ~10-15 s apart while a real session is
-    // live; once an episode has seen that evidence, absence must outlast the cadence.
-    public static readonly TimeSpan LogFallbackStickiness = TimeSpan.FromSeconds(20);
 
     private DateTimeOffset? _lastPresentAt;
     private DateTimeOffset? _sessionStartedAt;
     private DateTimeOffset? _quietUntil;
     private DateTimeOffset? _interruptedAt;
     private DateTimeOffset? _verifiedInactiveSince;
-    private DateTimeOffset? _lastLogFallbackAt;
     private DateTimeOffset? _verifiedActiveSince;
     private bool _verifiedActiveReady;
     private List<ControllerInfo> _controllers = [];
@@ -105,15 +101,11 @@ public sealed class UuConnectionTracker
             _verifiedInactiveSince ??= now;
         else
             _verifiedInactiveSince = null;
-        // The connection log flushes in bursts up to ~10-15 s apart while a real session is
-        // live. Once an episode has seen log-fallback evidence, its absence must exceed the
-        // burst cadence before the episode can end; otherwise burst gaps re-enter and tear
-        // down a live session's display.
-        var logGapExceeded = _lastLogFallbackAt is null
-            || now - _lastLogFallbackAt > LogFallbackStickiness;
-        if (signals.LogFallback) _lastLogFallbackAt = now;
+        // Keep the full reconnect grace for unknown/incomplete capture.
+        // If a positive sample arrives just before evaluation of the early
+        // deadline, it wins; normal expiry still follows upstream ordering.
         if (!_connected && _interruptedAt is { } old &&
-            ((now - old > ReconnectWindow && logGapExceeded) ||
+            (now - old > ReconnectWindow ||
              (_verifiedInactiveSince is { } verified &&
               now - old >= MinimumInterruptedGrace &&
               now - verified > VerifiedInactiveGrace &&
@@ -125,7 +117,6 @@ public sealed class UuConnectionTracker
             _verifiedActiveReady = false;
             _sessionStartedAt = null;
             _lastPresentAt = null;
-            _lastLogFallbackAt = null;
             _quietUntil = null;
             _controllers.Clear();
             _departed.Clear();

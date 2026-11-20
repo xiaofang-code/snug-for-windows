@@ -111,11 +111,11 @@ public sealed class UuConnectionTrackerTests
         var active = new UuSignals(false, null, true, LogFallback: true, PeerConnection: true);
         tracker.Update(active, t);
         tracker.Update(new(false, null, null), t.AddSeconds(2));
-        var resumed = tracker.Update(active, t.AddSeconds(22.5));
+        var resumed = tracker.Update(active, t.AddSeconds(8.5));
         Assert.Equal(new[] { ConnectionTransitionKind.Ended, ConnectionTransitionKind.Connected },
             resumed.Select(x => x.Kind).ToArray());
-        Assert.False(tracker.WantsPhoneScreen(t.AddSeconds(22.5)));
-        Assert.True(tracker.WantsPhoneScreen(t.AddSeconds(24.5)));
+        Assert.False(tracker.WantsPhoneScreen(t.AddSeconds(8.5)));
+        Assert.True(tracker.WantsPhoneScreen(t.AddSeconds(10.5)));
     }
 
     [Fact]
