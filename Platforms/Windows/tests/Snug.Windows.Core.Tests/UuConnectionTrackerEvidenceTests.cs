@@ -200,4 +200,17 @@ public sealed class UuConnectionTrackerEvidenceTests
             Assert.Single(tracker.Update(
                 logOnly with { PeerConnection = true }, T.AddSeconds(11))).Kind);
     }
+
+    [Fact]
+    public void LogFallbackPlusCaptureCanSeedRelayedSession()
+    {
+        // A phone connected over the cloud relay has no peer TCP on non-relay ports and its
+        // controller table may be unreadable: growth plus active capture is the weakest pair
+        // that can still seed an episode.
+        var tracker = new UuConnectionTracker();
+        var pair = new UuSignals(false, null, true, LogFallback: true);
+        Assert.Equal(ConnectionTransitionKind.Connected,
+            Assert.Single(tracker.Update(pair, T)).Kind);
+        Assert.True(tracker.IsConnected);
+    }
 }
