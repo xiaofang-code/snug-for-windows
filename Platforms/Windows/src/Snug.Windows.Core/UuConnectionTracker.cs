@@ -22,11 +22,10 @@ public readonly record struct UuSignals(
     // (phantom Connected → capture idle → accelerated Ended → teardown → log regrowth → repeat).
     //
     // Peer TCP is diagnostic context only: UU keeps server-owned outbound connections to its
-    // cloud relays alive for the whole server lifetime, so LogFallback growth on its own is
-    // ambiguous — every Snug display start/stop makes UU append device-change log entries,
-    // which otherwise self-feeds a phantom session. LogFallback seeds an episode only when a
-    // real peer (non-relay, non-loopback TCP) accompanies it; otherwise it only sustains or
-    // resumes an already-open episode. CaptureActive likewise cannot seed a session.
+    // cloud relays alive for the whole server lifetime, and relayed clients ride those :443
+    // connections, so a peer signal cannot distinguish phantom from real. The connection
+    // log only grows while a real client session is live, so LogFallback (that log's growth)
+    // may seed an episode directly; CaptureActive likewise cannot seed.
     public UuEvidenceKind Evidence =>
         Controllers is { Count: > 0 } || Controller is { } item &&
             !(item.Kind == ControllerKind.Unknown && item.Name == "UU Remote")
@@ -54,12 +53,16 @@ public sealed class UuConnectionTracker
     public static readonly TimeSpan UnknownControllerGrace = TimeSpan.FromSeconds(2);
     public static readonly TimeSpan VerifiedActiveGrace = TimeSpan.FromSeconds(1);
     public static readonly TimeSpan MinimumInterruptedGrace = TimeSpan.FromMilliseconds(500);
+    // The connection log flushes in bursts up to ~10-15 s apart while a real session is
+    // live; once an episode has seen that evidence, absence must outlast the cadence.
+    public static readonly TimeSpan LogFallbackStickiness = TimeSpan.FromSeconds(20);
 
     private DateTimeOffset? _lastPresentAt;
     private DateTimeOffset? _sessionStartedAt;
     private DateTimeOffset? _quietUntil;
     private DateTimeOffset? _interruptedAt;
     private DateTimeOffset? _verifiedInactiveSince;
+    private DateTimeOffset? _lastLogFallbackAt;
     private DateTimeOffset? _verifiedActiveSince;
     private bool _verifiedActiveReady;
     private List<ControllerInfo> _controllers = [];
@@ -102,11 +105,15 @@ public sealed class UuConnectionTracker
             _verifiedInactiveSince ??= now;
         else
             _verifiedInactiveSince = null;
-        // Keep the full reconnect grace for unknown/incomplete capture.
-        // If a positive sample arrives just before evaluation of the early
-        // deadline, it wins; normal expiry still follows upstream ordering.
+        // The connection log flushes in bursts up to ~10-15 s apart while a real session is
+        // live. Once an episode has seen log-fallback evidence, its absence must exceed the
+        // burst cadence before the episode can end; otherwise burst gaps re-enter and tear
+        // down a live session's display.
+        var logGapExceeded = _lastLogFallbackAt is null
+            || now - _lastLogFallbackAt > LogFallbackStickiness;
+        if (signals.LogFallback) _lastLogFallbackAt = now;
         if (!_connected && _interruptedAt is { } old &&
-            (now - old > ReconnectWindow ||
+            ((now - old > ReconnectWindow && logGapExceeded) ||
              (_verifiedInactiveSince is { } verified &&
               now - old >= MinimumInterruptedGrace &&
               now - verified > VerifiedInactiveGrace &&
@@ -118,6 +125,7 @@ public sealed class UuConnectionTracker
             _verifiedActiveReady = false;
             _sessionStartedAt = null;
             _lastPresentAt = null;
+            _lastLogFallbackAt = null;
             _quietUntil = null;
             _controllers.Clear();
             _departed.Clear();
@@ -130,14 +138,10 @@ public sealed class UuConnectionTracker
 
         var episodeOpen = _connected || _interruptedAt is not null;
         var present = signals.IsPresent || (episodeOpen && signals.CaptureActive == true);
-        // CaptureActive alone cannot seed a session, only sustain or resume one.
-        // LogFallback alone can only seed when a real peer accompanies it: Snug's own display
-        // churn regrows the UU streamer log, and seeding on it self-feeds a phantom session.
-        if (present && !episodeOpen && signals.LogFallback
-            && !signals.PeerConnection && !signals.OverlayVisible
-            && signals.Controller is null && signals.Controllers is not { Count: > 0 }
-            && signals.CaptureActive != true)
-            present = false;
+        // CaptureActive alone cannot seed a session, only sustain or resume one: UU opens
+        // DxgKrnl contexts for its own health checks with no client. LogFallback is growth of
+        // the connection log, which only grows while a real remote client is connected, so it
+        // may seed directly.
         if (present)
         {
             _lastPresentAt = now;

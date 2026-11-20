@@ -8,7 +8,10 @@ namespace Snug.Windows.Core;
 public sealed class UuStreamLogActivityTracker
 {
     public static readonly TimeSpan GrowthWindow = TimeSpan.FromSeconds(3);
-    public static readonly TimeSpan Freshness = TimeSpan.FromSeconds(2);
+    // The connection log flushes in bursts up to ~10 s apart while a session is live; hold
+    // the signal through the gap so an open episode isn't interrupted between bursts. Growth
+    // of this log only happens with a real client, so a generous hold is safe.
+    public static readonly TimeSpan Freshness = TimeSpan.FromSeconds(15);
     // GameViewerServer keeps writing a small heartbeat line every ~3 seconds even with no
     // session. That alone satisfies "two growth events within the window" and would make the
     // log-fallback signal permanently true, seeding phantom sessions. Require the total bytes

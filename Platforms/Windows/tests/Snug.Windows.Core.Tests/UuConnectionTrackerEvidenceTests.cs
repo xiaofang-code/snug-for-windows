@@ -183,22 +183,18 @@ public sealed class UuConnectionTrackerEvidenceTests
     }
 
     [Fact]
-    public void LogFallbackAloneWithoutPeerCannotStartEpisode()
+    public void LogFallbackAloneCanSeedEpisode()
     {
-        // Snug's own display start/stop churn makes GameViewerServer append device-change log
-        // entries; bare streamer-log growth must not seed a phantom session. It needs a real
-        // peer TCP alongside, or stronger evidence (overlay/controller/capture).
+        // LogFallback is growth of the connection log — which only grows while a real
+        // remote client session is live — so it seeds directly even without a peer TCP
+        // (relayed clients ride :443 cloud connections).
         var tracker = new UuConnectionTracker();
         var logOnly = new UuSignals(false, null, null, LogFallback: true);
-        Assert.Empty(tracker.Update(logOnly, T));
-        Assert.False(tracker.IsConnected);
-        Assert.Empty(tracker.Update(logOnly, T.AddSeconds(10)));
-        Assert.False(tracker.IsConnected);
-        Assert.False(tracker.WantsPhoneScreen(T.AddSeconds(10)));
-        // A real client pair (log growth + peer) still connects immediately.
         Assert.Equal(ConnectionTransitionKind.Connected,
-            Assert.Single(tracker.Update(
-                logOnly with { PeerConnection = true }, T.AddSeconds(11))).Kind);
+            Assert.Single(tracker.Update(logOnly, T)).Kind);
+        Assert.True(tracker.IsConnected);
+        Assert.False(tracker.WantsPhoneScreen(T.AddSeconds(1))); // unknown controller grace
+        Assert.True(tracker.WantsPhoneScreen(T.AddSeconds(3)));
     }
 
     [Fact]

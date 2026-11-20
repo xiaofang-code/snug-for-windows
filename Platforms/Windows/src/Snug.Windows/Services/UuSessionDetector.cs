@@ -20,6 +20,7 @@ public sealed class UuSessionDetector : IDisposable
     private readonly UuControllerReader _controllerReader = new();
     private readonly UuCaptureMonitorReader? _captureMonitor = UuCaptureMonitorReader.FromEnvironment();
     private readonly UuStreamLogActivityTracker _streamLogActivity = new();
+    private readonly UuStreamLogActivityTracker _connectionLogActivity = new();
     private UuServerGeneration? _serverGeneration;
     private string _logSummary = "等待 UU 会话日志";
     private DateTimeOffset _lastPoll = DateTimeOffset.MinValue;
@@ -91,6 +92,7 @@ public sealed class UuSessionDetector : IDisposable
                     var peerConnection = HasActivePeerTcpConnection(serverPid.Value);
                     var logDirectory = ResolveLogDirectory(serverProcesses);
                     var streamPath = ResolveCurrentStreamerLog(logDirectory, serverPid.Value);
+                    var connectionPath = ResolveCurrentConnectionLog(logDirectory, serverPid.Value);
                     var streamActive = false;
                     var streamStatus = streamPath is null ? "missing" : "idle";
                     if (streamPath is not null)
@@ -114,11 +116,35 @@ public sealed class UuSessionDetector : IDisposable
                         _streamLogActivity.Reset();
                     }
 
+                    // The connection log only grows while a remote client session is live;
+                    // Snug's own display churn and the server's heartbeat grow the streamer
+                    // log but never this one, so its growth alone is reliable session evidence.
+                    var connectionActive = false;
+                    if (connectionPath is not null)
+                    {
+                        try
+                        {
+                            var connectionFile = new FileInfo(connectionPath);
+                            connectionFile.Refresh();
+                            connectionActive = _connectionLogActivity.Observe(
+                                connectionPath, connectionFile.Length, DateTimeOffset.UtcNow);
+                            if (connectionActive) streamStatus += "+connection";
+                        }
+                        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
+                        {
+                            _connectionLogActivity.Reset();
+                        }
+                    }
+                    else
+                    {
+                        _connectionLogActivity.Reset();
+                    }
+
                     signals = new UuSignals(
                         OverlayVisible: overlayVisible,
                         Controller: null,
                         CaptureActive: null,
-                        LogFallback: streamActive,
+                        LogFallback: connectionActive,
                         PeerConnection: peerConnection);
 
                     summary = "Server PID " + serverPid
@@ -157,6 +183,15 @@ public sealed class UuSessionDetector : IDisposable
     {
         if (!Directory.Exists(directory)) return null;
         var pattern = "streamer_log_controlled_*_" + serverPid + ".slog";
+        return Directory.EnumerateFiles(directory, pattern)
+            .OrderByDescending(File.GetLastWriteTimeUtc)
+            .FirstOrDefault();
+    }
+
+    private static string? ResolveCurrentConnectionLog(string directory, int serverPid)
+    {
+        if (!Directory.Exists(directory)) return null;
+        var pattern = "connection_log_controlled_*_" + serverPid + ".slog";
         return Directory.EnumerateFiles(directory, pattern)
             .OrderByDescending(File.GetLastWriteTimeUtc)
             .FirstOrDefault();
