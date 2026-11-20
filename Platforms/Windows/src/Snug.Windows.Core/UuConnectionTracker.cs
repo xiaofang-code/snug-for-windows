@@ -14,11 +14,19 @@ public readonly record struct UuSignals(
     bool CaptureVerifiedActive = false)
 {
     public bool IsPresent => OverlayVisible || Controller is not null ||
-        Controllers is { Count: > 0 } || CaptureActive == true || LogFallback;
+        Controllers is { Count: > 0 } || LogFallback;
 
-    // Peer TCP is diagnostic context only: UU can keep a server-owned peer alive after capture has ended.
-    // Session presence follows the same three observable signals as upstream: overlay, controller table, or capture.
-    // LogFallback remains compatibility evidence, not verified identity.
+    // Bare capture activity is evidence of an *active episode*, not of a *new* session:
+    // GameViewerServer opens DxgKrnl output-duplication contexts for its own health checks with
+    // no remote client, so letting it start an episode self-oscillates the phone display
+    // (phantom Connected → capture idle → accelerated Ended → teardown → log regrowth → repeat).
+    //
+    // Peer TCP is diagnostic context only: UU keeps server-owned outbound connections to its
+    // cloud relays alive for the whole server lifetime, so LogFallback growth on its own is
+    // ambiguous — every Snug display start/stop makes UU append device-change log entries,
+    // which otherwise self-feeds a phantom session. LogFallback seeds an episode only when a
+    // real peer (non-relay, non-loopback TCP) accompanies it; otherwise it only sustains or
+    // resumes an already-open episode. CaptureActive likewise cannot seed a session.
     public UuEvidenceKind Evidence =>
         Controllers is { Count: > 0 } || Controller is { } item &&
             !(item.Kind == ControllerKind.Unknown && item.Name == "UU Remote")
@@ -120,7 +128,17 @@ public sealed class UuConnectionTracker
                      .Select(item => item.Key).ToArray())
             _departed.Remove(name);
 
-        if (signals.IsPresent)
+        var episodeOpen = _connected || _interruptedAt is not null;
+        var present = signals.IsPresent || (episodeOpen && signals.CaptureActive == true);
+        // CaptureActive alone cannot seed a session, only sustain or resume one.
+        // LogFallback alone can only seed when a real peer accompanies it: Snug's own display
+        // churn regrows the UU streamer log, and seeding on it self-feeds a phantom session.
+        if (present && !episodeOpen && signals.LogFallback
+            && !signals.PeerConnection && !signals.OverlayVisible
+            && signals.Controller is null && signals.Controllers is not { Count: > 0 }
+            && signals.CaptureActive != true)
+            present = false;
+        if (present)
         {
             _lastPresentAt = now;
             // Complete active capture is stronger evidence of an actual

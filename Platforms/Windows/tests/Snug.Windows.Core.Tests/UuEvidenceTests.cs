@@ -11,7 +11,8 @@ public sealed class UuEvidenceTests
         Assert.Equal(UuEvidenceKind.LogFallback,sample.Evidence);
         var tracker = new UuConnectionTracker();
         tracker.Update(sample,Start);
-        Assert.True(tracker.WantsPhoneScreen(Start.AddSeconds(3)));
+        // LogFallback alone cannot seed an episode without a real peer; it is only evidence.
+        Assert.False(tracker.WantsPhoneScreen(Start.AddSeconds(3)));
         Assert.Empty(tracker.Controllers);
     }
     [Fact] public void PeerTcpAloneIsDiagnosticOnly()

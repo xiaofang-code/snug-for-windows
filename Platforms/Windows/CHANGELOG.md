@@ -1,5 +1,13 @@
 # Windows changelog
 
+
+## 0.2.48 — phantom-session oscillation fix (candidate)
+
+- Bare `CaptureActive` and bare `LogFallback` can sustain or resume an already-open episode but no longer seed one: GameViewerServer opens DxgKrnl capture contexts for its own health checks, and Snug's own display start/stop churn makes UU append device-change log entries — seeding on either self-feeds a phantom Connected. `LogFallback` still seeds when a real peer TCP accompanies it.
+- Gate the streamer-log fallback on a sliding-window byte floor (1024 B within 3 s) so GameViewerServer's ~300 B heartbeat every ~3 s stays inert instead of reading as permanent activity.
+- Root cause of the self-oscillation loop measured on a machine with no remote client: display churn regrew the streamer log → `LogFallback` alone seeded phantom `Connected` → virtual phone display built → evidence went quiet → `Ended` → teardown logging regrew the log → repeat.
+- Live verification on the affected machine: after deploying the rebuilt DLLs, 90+ s of `SessionState` samples show zero transitions and zero Connected samples; the previous cadence was a display install/remove every ~6 s. 303/303 tests pass, including new regressions `CaptureAloneCannotStartEpisode` and `LogFallbackAloneWithoutPeerCannotStartEpisode`.
+
 ## 0.2.47 — overlapping verified response windows (release)
 
 - One second of continuously verified complete active capture can expedite the unknown-device session path; retain two seconds for incomplete, rebuilding or log-only evidence. Known desktop classification still vetoes phone display; faster capture detection is not phone identification.

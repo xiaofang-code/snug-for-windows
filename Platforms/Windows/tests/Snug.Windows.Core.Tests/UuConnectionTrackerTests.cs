@@ -10,7 +10,7 @@ public sealed class UuConnectionTrackerTests
         var tracker = new UuConnectionTracker();
         var now = DateTimeOffset.Parse("2026-11-14T10:00:00Z");
 
-        var events = tracker.Update(new(false, null, true), now);
+        var events = tracker.Update(new(false, null, true, LogFallback: true, PeerConnection: true), now);
 
         Assert.True(tracker.IsConnected);
         Assert.Single(events);
@@ -86,7 +86,7 @@ public sealed class UuConnectionTrackerTests
     {
         var tracker = new UuConnectionTracker();
         var t = DateTimeOffset.UnixEpoch;
-        var active = new UuSignals(false, null, true);
+        var active = new UuSignals(false, null, true, LogFallback: true, PeerConnection: true);
         var absent = new UuSignals(false, null, null);
         tracker.Update(active, t);
         for (var i = 0; i < 5; i++)
@@ -108,7 +108,7 @@ public sealed class UuConnectionTrackerTests
     {
         var tracker = new UuConnectionTracker();
         var t = DateTimeOffset.UnixEpoch;
-        var active = new UuSignals(false, null, true);
+        var active = new UuSignals(false, null, true, LogFallback: true, PeerConnection: true);
         tracker.Update(active, t);
         tracker.Update(new(false, null, null), t.AddSeconds(2));
         var resumed = tracker.Update(active, t.AddSeconds(8.5));

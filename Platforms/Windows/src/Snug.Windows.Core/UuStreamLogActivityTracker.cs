@@ -9,12 +9,17 @@ public sealed class UuStreamLogActivityTracker
 {
     public static readonly TimeSpan GrowthWindow = TimeSpan.FromSeconds(3);
     public static readonly TimeSpan Freshness = TimeSpan.FromSeconds(2);
+    // GameViewerServer keeps writing a small heartbeat line every ~3 seconds even with no
+    // session. That alone satisfies "two growth events within the window" and would make the
+    // log-fallback signal permanently true, seeding phantom sessions. Require the total bytes
+    // appended inside the window to clear a floor so periodic heartbeats stay inert.
+    public const long MinimumGrowthBytes = 1024;
 
     private string? _source;
     private long? _lastLength;
     private DateTimeOffset? _lastSampleAt;
-    private DateTimeOffset? _previousGrowthAt;
-    private DateTimeOffset? _lastGrowthAt;
+    private readonly Queue<(DateTimeOffset At, long Bytes)> _growthEvents = new();
+    private long _windowGrowthBytes;
 
     public bool Observe(string source, long length, DateTimeOffset now)
     {
@@ -52,22 +57,27 @@ public sealed class UuStreamLogActivityTracker
         if (length < previousLength)
         {
             _lastLength = length;
-            _previousGrowthAt = null;
-            _lastGrowthAt = null;
+            _growthEvents.Clear();
+            _windowGrowthBytes = 0;
             return false;
         }
 
         if (length > previousLength)
         {
             _lastLength = length;
-            _previousGrowthAt = _lastGrowthAt;
-            _lastGrowthAt = now;
+            _growthEvents.Enqueue((now, length - previousLength));
+            _windowGrowthBytes += length - previousLength;
+            while (_growthEvents.TryPeek(out var oldest) && now - oldest.At > GrowthWindow)
+            {
+                _windowGrowthBytes -= oldest.Bytes;
+                _growthEvents.Dequeue();
+            }
         }
 
-        if (_previousGrowthAt is not { } first
-            || _lastGrowthAt is not { } last
-            || last - first > GrowthWindow)
+        if (_growthEvents.Count < 2 || _windowGrowthBytes < MinimumGrowthBytes)
             return false;
+
+        var last = _growthEvents.Last().At;
 
         var age = now - last;
         return age >= TimeSpan.Zero && age <= Freshness;
@@ -78,7 +88,7 @@ public sealed class UuStreamLogActivityTracker
         _source = null;
         _lastLength = null;
         _lastSampleAt = null;
-        _previousGrowthAt = null;
-        _lastGrowthAt = null;
+        _growthEvents.Clear();
+        _windowGrowthBytes = 0;
     }
 }

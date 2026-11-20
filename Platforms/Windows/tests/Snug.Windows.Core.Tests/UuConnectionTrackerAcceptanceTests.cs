@@ -9,7 +9,7 @@ public sealed class UuConnectionTrackerAcceptanceTests
         var tracker=new UuConnectionTracker();
         var t=DateTimeOffset.UnixEpoch;
         var phone=new ControllerInfo("test",ControllerKind.Phone);
-        Assert.Contains(tracker.Update(new(false,null,true),t),x=>x.Kind==ConnectionTransitionKind.Connected);
+        Assert.Contains(tracker.Update(new(false,null,true,LogFallback:true,PeerConnection:true),t),x=>x.Kind==ConnectionTransitionKind.Connected);
         var cachedController=new UuSignals(false,null,false,[phone]);
         tracker.Update(cachedController,t.AddSeconds(1));
         tracker.Update(cachedController,t.AddSeconds(2));

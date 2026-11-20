@@ -12,8 +12,8 @@ public sealed class UuStreamLogActivityTrackerTests
     {
         var tracker = new UuStreamLogActivityTracker();
         Assert.False(tracker.Observe(@"D:\UU\streamer_42.slog", 100, T));
-        Assert.False(tracker.Observe(@"D:\UU\streamer_42.slog", 200, T.AddSeconds(1)));
-        Assert.True(tracker.Observe(@"D:\UU\streamer_42.slog", 300, T.AddSeconds(2)));
+        Assert.False(tracker.Observe(@"D:\UU\streamer_42.slog", 1200, T.AddSeconds(1)));
+        Assert.True(tracker.Observe(@"D:\UU\streamer_42.slog", 2300, T.AddSeconds(2)));
     }
 
     [Fact]
@@ -26,14 +26,29 @@ public sealed class UuStreamLogActivityTrackerTests
     }
 
     [Fact]
+    public void PeriodicHeartbeatBelowTheFloorNeverCounts()
+    {
+        // GameViewerServer appends a small heartbeat line every ~3 seconds while idle; two
+        // such appends inside the window must not read as session activity.
+        var tracker = new UuStreamLogActivityTracker();
+        var length = 1000L;
+        for (var t = 0; t <= 30; t += 3)
+        {
+            Assert.False(tracker.Observe("streamer.slog", length, T.AddSeconds(t)));
+            length += 300;
+        }
+    }
+
+
+    [Fact]
     public void ActivityExpiresWhenLogStopsGrowing()
     {
         var tracker = new UuStreamLogActivityTracker();
         tracker.Observe("streamer.slog", 100, T);
-        tracker.Observe("streamer.slog", 200, T.AddSeconds(1));
-        Assert.True(tracker.Observe("streamer.slog", 300, T.AddSeconds(2)));
-        Assert.True(tracker.Observe("streamer.slog", 300, T.AddSeconds(3.5)));
-        Assert.False(tracker.Observe("streamer.slog", 300, T.AddSeconds(4.1)));
+        tracker.Observe("streamer.slog", 1200, T.AddSeconds(1));
+        Assert.True(tracker.Observe("streamer.slog", 2300, T.AddSeconds(2)));
+        Assert.True(tracker.Observe("streamer.slog", 2300, T.AddSeconds(3.5)));
+        Assert.False(tracker.Observe("streamer.slog", 2300, T.AddSeconds(4.1)));
     }
 
     [Fact]
@@ -41,14 +56,14 @@ public sealed class UuStreamLogActivityTrackerTests
     {
         var tracker = new UuStreamLogActivityTracker();
         tracker.Observe("old.slog", 100, T);
-        tracker.Observe("old.slog", 200, T.AddSeconds(1));
-        Assert.True(tracker.Observe("old.slog", 300, T.AddSeconds(2)));
+        tracker.Observe("old.slog", 1200, T.AddSeconds(1));
+        Assert.True(tracker.Observe("old.slog", 2300, T.AddSeconds(2)));
         Assert.False(tracker.Observe("new.slog", 500, T.AddSeconds(3)));
-        Assert.False(tracker.Observe("new.slog", 600, T.AddSeconds(4)));
-        Assert.True(tracker.Observe("new.slog", 700, T.AddSeconds(5)));
+        Assert.False(tracker.Observe("new.slog", 1600, T.AddSeconds(4)));
+        Assert.True(tracker.Observe("new.slog", 2700, T.AddSeconds(5)));
         Assert.False(tracker.Observe("new.slog", 50, T.AddSeconds(6)));
-        Assert.False(tracker.Observe("new.slog", 100, T.AddSeconds(7)));
-        Assert.True(tracker.Observe("new.slog", 150, T.AddSeconds(8)));
+        Assert.False(tracker.Observe("new.slog", 1100, T.AddSeconds(7)));
+        Assert.True(tracker.Observe("new.slog", 2200, T.AddSeconds(8)));
     }
 
     [Fact]
@@ -77,9 +92,9 @@ public sealed class UuStreamLogActivityTrackerTests
     {
         var tracker = new UuStreamLogActivityTracker();
         tracker.Observe("streamer.slog", 100, T);
-        tracker.Observe("streamer.slog", 200, T.AddSeconds(2));
-        Assert.False(tracker.Observe("streamer.slog", 300, T.AddSeconds(1)));
-        Assert.False(tracker.Observe("streamer.slog", 400, T.AddSeconds(2)));
-        Assert.True(tracker.Observe("streamer.slog", 500, T.AddSeconds(3)));
+        tracker.Observe("streamer.slog", 1200, T.AddSeconds(2));
+        Assert.False(tracker.Observe("streamer.slog", 2300, T.AddSeconds(1)));
+        Assert.False(tracker.Observe("streamer.slog", 3400, T.AddSeconds(2)));
+        Assert.True(tracker.Observe("streamer.slog", 4500, T.AddSeconds(3)));
     }
 }
